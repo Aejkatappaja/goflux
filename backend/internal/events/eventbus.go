@@ -2,7 +2,6 @@
 package events
 
 import (
-	"errors"
 	"sync"
 )
 
@@ -18,8 +17,6 @@ func NewEventBus() *EventBus {
 
 	return &EventBus{Handlers: handlers}
 }
-
-var ErrNoHandlers error = errors.New("no handler registered for event type")
 
 // Subscribe registers a handler for the specified event type.
 // Multiple handlers can be registered for the same event type.
@@ -37,8 +34,8 @@ func (eb *EventBus) Publish(event Event) error {
 	eb.mu.RLock()
 	handlers, exists := eb.Handlers[event.Type]
 	eb.mu.RUnlock()
-	if !exists {
-		return ErrNoHandlers
+	if !exists || len(handlers) == 0 {
+		return nil
 	}
 	for _, handler := range handlers {
 		err := handler(event)
