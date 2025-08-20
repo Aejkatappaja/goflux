@@ -9,62 +9,62 @@ import (
 	"time"
 )
 
-func TestEventBus_Subscribe(t *testing.T) {
-	const (
-		ErrHandlerNotCalled string = "handler was not called"
-		ErrWrongEventType   string = "wrong event type"
-		ErrWrongUserID      string = "wrong UserID"
-		ErrWrongPayload     string = "payload CANCEL_ACTION should be true"
-	)
+const (
+	TestEventType  = "TEST_EVENT"
+	BenchEventType = "BENCH_EVENT"
+)
 
-	const (
-		eventType   string = "EVENT_TEST"
-		eventUserID string = "0"
-	)
-
-	eventPayload := map[string]any{"CANCEL_ACTION": true, "RETRIES": 5}
-
-	eb := NewEventBus()
-
-	handlerCalled := false
-
-	handler := func(e Event) error {
-		handlerCalled = true
-
-		if e.UserID != eventUserID {
-			t.Error(ErrWrongUserID)
-		}
-		if e.Type != eventType {
-			t.Error(ErrWrongEventType)
-		}
-		if e.Payload["CANCEL_ACTION"] != true {
-			t.Error(ErrWrongPayload)
-		}
-
-		return nil
-	}
-
-	eb.Subscribe(eventType, handler)
-
-	evt := NewUserEvent(eventType, eventUserID, eventPayload)
-
-	err := eb.Publish(evt)
-	if err != nil {
-		t.Errorf("Publish failed: %v", err)
-	}
-	if !handlerCalled {
-		t.Error(ErrHandlerNotCalled)
-	}
+func createTestEventBus(t *testing.T) *EventBus {
+	t.Helper()
+	return NewEventBus()
 }
 
-// Publishing to an event with no subscribers should not fail
-func TestEventBus_PublishNoHandlers(t *testing.T) {
-	eb := NewEventBus()
-	evt := NewSystemEvent("UNHEARD_EVENT", nil)
-	err := eb.Publish(evt)
-	if err != nil {
-		t.Errorf("Publish failed: %v", err)
-	}
+func TestEventBus_Subscribe(t *testing.T) {
+	t.Run("valid user event", func(t *testing.T) {
+		const eventUserID = "0"
+		eventPayload := map[string]any{"CANCEL_ACTION": true, "RETRIES": 5}
+
+		eb := createTestEventBus(t)
+		handlerCalled := false
+
+		handler := func(e Event) error {
+			handlerCalled = true
+
+			if e.UserID != eventUserID {
+				t.Errorf("wrong UserID: got %s, want %s", e.UserID, eventUserID)
+			}
+			if e.Type != TestEventType {
+				t.Errorf("wrong event type: got %s, want %s", e.Type, TestEventType)
+			}
+			if e.Payload["CANCEL_ACTION"] != true {
+				t.Error("payload CANCEL_ACTION should be true")
+			}
+
+			return nil
+		}
+
+		eb.Subscribe(TestEventType, handler)
+		evt := NewUserEvent(TestEventType, eventUserID, eventPayload)
+
+		err := eb.Publish(evt)
+		if err != nil {
+			t.Fatalf("Publish failed: %v", err)
+		}
+		if !handlerCalled {
+			t.Error("handler was not called")
+		}
+	})
+
+	t.Run("publish with no handlers", func(t *testing.T) {
+		eb := createTestEventBus(t)
+		evt := NewSystemEvent("UNHEARD_EVENT", nil)
+
+		// No handlers = should not fail
+		err := eb.Publish(evt)
+		if err != nil {
+			t.Errorf("Publish should succeed with no handlers: %v", err)
+		}
+	})
 }
 
 func TestEventBus_PublishWithError(t *testing.T) {
@@ -195,10 +195,10 @@ func BenchmarkEventBus_Publish(b *testing.B) {
 		return nil
 	}
 
-	eb.Subscribe("BENCH_EVENT", handler)
+	eb.Subscribe(BenchEventType, handler)
 
 	for b.Loop() {
-		evt := NewSystemEvent("BENCH_EVENT", nil)
+		evt := NewSystemEvent(BenchEventType, nil)
 		eb.Publish(evt)
 	}
 }
