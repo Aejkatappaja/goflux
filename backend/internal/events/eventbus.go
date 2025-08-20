@@ -3,44 +3,47 @@ package events
 
 import (
 	"errors"
+	"sync"
 )
 
 type EventHandler func(evt Event) error
 
 type EventBus struct {
+	mu       sync.RWMutex
 	Handlers map[string][]EventHandler
 }
 
 func NewEventBus() *EventBus {
 	handlers := make(map[string][]EventHandler)
 
-	return &EventBus{handlers}
+	return &EventBus{Handlers: handlers}
 }
 
-var (
-	ErrHandlerNotFound error = errors.New("handler not found")
-	ErrNoHandlers      error = errors.New("no handler registered for event type")
-)
+var ErrNoHandlers error = errors.New("no handler registered for event type")
 
 // Subscribe registers a handler for the specified event type.
 // Multiple handlers can be registered for the same event type.
 // Uses Go's append behavior where append(nil, item) creates a new slice.
 func (eb *EventBus) Subscribe(eventType string, handler EventHandler) {
+	eb.mu.Lock()
+	defer eb.mu.Unlock()
 	eb.Handlers[eventType] = append(eb.Handlers[eventType], handler)
 }
 
 // Publish sends an event to all registered handlers for the event type.
-// Returns ErrHandlerNotFound if no handlers are registered.
+// Returns ErrNoHandlers if no handlers are registered.
 // Stops and returns error if any handler fails (fail-fast).
 func (eb *EventBus) Publish(event Event) error {
+	eb.mu.RLock()
 	handlers, exists := eb.Handlers[event.Type]
+	eb.mu.RUnlock()
 	if !exists {
-		return ErrHandlerNotFound
+		return ErrNoHandlers
 	}
 	for _, handler := range handlers {
 		err := handler(event)
 		if err != nil {
-			return ErrNoHandlers
+			return err
 		}
 	}
 	return nil
