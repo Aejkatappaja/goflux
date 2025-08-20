@@ -1,3 +1,4 @@
+// Package events
 package events
 
 import (
