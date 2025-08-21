@@ -8,6 +8,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/aejkatappaja/goflux/internal/utils"
 )
 
 const (
@@ -28,14 +30,16 @@ func TestEventBus_Subscribe(t *testing.T) {
 		eb := createTestEventBus(t)
 		handlerCalled := false
 
+		expectedEventType := utils.NormalizeEventType(TestEventType)
+
 		handler := func(e Event) error {
 			handlerCalled = true
 
 			if e.UserID != eventUserID {
 				t.Errorf("wrong UserID: got %s, want %s", e.UserID, eventUserID)
 			}
-			if e.Type != TestEventType {
-				t.Errorf("wrong event type: got %s, want %s", e.Type, TestEventType)
+			if e.Type != expectedEventType {
+				t.Errorf("wrong event type: got %s, want %s", e.Type, expectedEventType)
 			}
 			if e.Payload["CANCEL_ACTION"] != true {
 				t.Error("payload CANCEL_ACTION should be true")

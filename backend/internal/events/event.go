@@ -22,7 +22,7 @@ const EventVersion string = "1.0.0"
 func NewUserEvent(eventType string, userID string, payload map[string]any) Event {
 	return Event{
 		ID:        utils.GenerateUUID(),
-		Type:      eventType,
+		Type:      utils.NormalizeEventType(eventType),
 		Timestamp: time.Now(),
 		UserID:    userID,
 		Payload:   payload,
@@ -34,7 +34,7 @@ func NewUserEvent(eventType string, userID string, payload map[string]any) Event
 func NewSystemEvent(eventType string, payload map[string]any) Event {
 	return Event{
 		ID:        utils.GenerateUUID(),
-		Type:      eventType,
+		Type:      utils.NormalizeEventType(eventType),
 		Timestamp: time.Now(),
 		UserID:    "",
 		Payload:   payload,
