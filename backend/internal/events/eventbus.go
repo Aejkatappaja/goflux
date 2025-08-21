@@ -4,19 +4,21 @@ package events
 import (
 	"context"
 	"sync"
+
+	"github.com/aejkatappaja/goflux/internal/utils"
 )
 
 type EventHandler func(evt Event) error
 
 type EventBus struct {
 	mu       sync.RWMutex
-	Handlers map[string][]EventHandler
+	handlers map[string][]EventHandler
 }
 
 func NewEventBus() *EventBus {
 	handlers := make(map[string][]EventHandler)
 
-	return &EventBus{Handlers: handlers}
+	return &EventBus{handlers: handlers}
 }
 
 // Subscribe registers a handler for the specified event type.
@@ -25,15 +27,20 @@ func NewEventBus() *EventBus {
 func (eb *EventBus) Subscribe(eventType string, handler EventHandler) {
 	eb.mu.Lock()
 	defer eb.mu.Unlock()
-	eb.Handlers[eventType] = append(eb.Handlers[eventType], handler)
+	key := utils.NormalizeEventType(eventType)
+	eb.handlers[key] = append(eb.handlers[key], handler)
 }
 
-// Publish sends an event to all registered handlers for the event type.
-// Returns ErrNoHandlers if no handlers are registered.
-// Stops and returns error if any handler fails (fail-fast).
+// Publish sends an event to all registered handlers for its (normalized) type.
+// If no handlers are registered, it returns nil.
+// It stops and returns the first handler error (fail-fast), and honors ctx
+// cancellation/timeout between handlers and at the end.
 func (eb *EventBus) Publish(ctx context.Context, event Event) error {
+	// Lookup without mutating the event
+	key := utils.NormalizeEventType(event.Type)
+
 	eb.mu.RLock()
-	handlers, exists := eb.Handlers[event.Type]
+	handlers, exists := eb.handlers[key]
 	eb.mu.RUnlock()
 
 	if !exists || len(handlers) == 0 {
