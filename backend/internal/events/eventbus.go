@@ -2,6 +2,7 @@
 package events
 
 import (
+	"context"
 	"sync"
 )
 
@@ -30,17 +31,24 @@ func (eb *EventBus) Subscribe(eventType string, handler EventHandler) {
 // Publish sends an event to all registered handlers for the event type.
 // Returns ErrNoHandlers if no handlers are registered.
 // Stops and returns error if any handler fails (fail-fast).
-func (eb *EventBus) Publish(event Event) error {
+func (eb *EventBus) Publish(ctx context.Context, event Event) error {
 	eb.mu.RLock()
 	handlers, exists := eb.Handlers[event.Type]
 	eb.mu.RUnlock()
+
 	if !exists || len(handlers) == 0 {
 		return nil
 	}
+
 	for _, handler := range handlers {
-		err := handler(event)
-		if err != nil {
-			return err
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			err := handler(event)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return nil
