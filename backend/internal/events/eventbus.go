@@ -45,11 +45,18 @@ func (eb *EventBus) Publish(ctx context.Context, event Event) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
-			err := handler(event)
-			if err != nil {
-				return err
-			}
+		}
+
+		if err := handler(event); err != nil {
+			return err
 		}
 	}
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
 	return nil
 }
