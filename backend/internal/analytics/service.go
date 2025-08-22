@@ -74,14 +74,13 @@ func (s *Service) Start(ctx context.Context) error {
 // Totals returns a snapshot of all per-type counters by delegating to the Store.
 // The returned map is a defensive copy and can be freely modified by callers.
 func (s *Service) Totals() map[string]uint64 {
-	// TODO: return s.store.Totals()
-	return nil
+	return s.store.Totals()
 }
 
 // TotalFor returns the current counter for the given event type.
 // The input is normalized before delegating to the Store to ensure
 // case-insensitive lookups.
 func (s *Service) TotalFor(eventType string) uint64 {
-	// TODO: key := utils.NormalizeEventType(eventType); return s.store.TotalFor(key)
-	return 0
+	key := utils.NormalizeEventType(eventType)
+	return s.store.TotalFor(key)
 }
