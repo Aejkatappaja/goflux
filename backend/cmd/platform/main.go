@@ -16,6 +16,11 @@ import (
 	"github.com/aejkatappaja/goflux/internal/utils"
 )
 
+const (
+	ErrInvalidJSON    = "invalid JSON"
+	ErrTypeIsRequired = "type is required"
+)
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -28,6 +33,8 @@ func main() {
 	if err := svc.Start(ctx); err != nil {
 		log.Fatalf("analytics start: %v", err)
 	}
+
+	log.Printf("analytics tracking types: %v", tracked)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", healthHandler)
@@ -57,6 +64,7 @@ func main() {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Printf("server shutdown: %v", err)
 	}
+	log.Printf("server stopped gracefully")
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
@@ -74,8 +82,13 @@ func analyticsTotalsHandler(svc *analytics.Service) http.Handler {
 
 func analyticsTypeHandler(svc *analytics.Service) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		t := r.PathValue("type") // variable du pattern {type}
-		count := svc.TotalFor(t) // normalisation interne côté Service
+		t := r.PathValue("type")
+		if t == "" {
+			// Go < 1.22 fallback
+			t = strings.TrimPrefix(r.URL.Path, "/analytics/types/")
+		}
+
+		count := svc.TotalFor(t)
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"type":  utils.NormalizeEventType(t),
@@ -92,12 +105,20 @@ type publishPayload struct {
 
 func publishEventHandler(bus *events.EventBus) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1MB max
+		defer r.Body.Close()
 		var p publishPayload
 
 		if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
-			http.Error(w, "invalid JSON", http.StatusBadRequest)
+			http.Error(w, ErrInvalidJSON, http.StatusBadRequest)
 			return
 		}
+
+		if strings.TrimSpace(p.Type) == "" {
+			http.Error(w, ErrTypeIsRequired, http.StatusBadRequest)
+			return
+		}
+
 		var evt events.Event
 		if p.UserID == "" {
 			evt = events.NewSystemEvent(p.Type, p.Payload)
@@ -105,10 +126,13 @@ func publishEventHandler(bus *events.EventBus) http.Handler {
 			evt = events.NewUserEvent(p.Type, p.UserID, p.Payload)
 		}
 		if err := bus.Publish(r.Context(), evt); err != nil {
+			log.Printf("publish failed: type=%s err=%v", p.Type, err)
 			http.Error(w, err.Error(), http.StatusGatewayTimeout) // context timeout/cancel
 			return
 		}
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "accepted"})
 	})
 }
 
