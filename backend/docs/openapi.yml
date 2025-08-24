@@ -1,0 +1,198 @@
+openapi: 3.1.0
+info:
+  title: GoFlux API
+  version: 1.0.0
+  description: |
+    Real-time event ingestion and analytics API (HTTP/JSON).
+    - POST /events: publish user/system events
+    - GET /analytics/types: totals per event type
+    - GET /analytics/types/{type}: total for a specific type
+    - GET /health: health probe
+servers:
+  - url: http://localhost:8080
+    description: Local development
+
+tags:
+  - name: Events
+    description: Event publishing
+  - name: Analytics
+    description: Real-time counters
+  - name: Health
+    description: Health checks
+
+paths:
+  /events:
+    post:
+      tags: [Events]
+      summary: Publish an event
+      description: |
+        Publishes a user or system event. Event types are normalized (trim + lowercase).
+        Returns 202 on success (fire-and-forget).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublishEventRequest"
+            examples:
+              systemEvent:
+                summary: System event
+                value:
+                  type: "view"
+                  payload: { page: "/" }
+              userEvent:
+                summary: User event
+                value:
+                  type: "click"
+                  userId: "user-123"
+                  payload: { button: "buy" }
+      responses:
+        "202":
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublishEventResponse"
+              examples:
+                accepted:
+                  value: { status: "accepted" }
+        "400":
+          description: Invalid JSON or missing required fields
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                invalid:
+                  value: { error: "invalid JSON" }
+                missingType:
+                  value: { error: "type is required" }
+        "415":
+          description: Unsupported media type (Content-Type must be application/json)
+        "413":
+          description: Payload too large (max ~1MiB)
+        "504":
+          description: Publish timed out (context deadline exceeded)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /analytics/types:
+    get:
+      tags: [Analytics]
+      summary: Get totals for all tracked event types
+      responses:
+        "200":
+          description: Totals per event type (snapshot)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalyticsTotalsResponse"
+              examples:
+                sample:
+                  value:
+                    view: 42
+                    click: 17
+
+  /analytics/types/{type}:
+    get:
+      tags: [Analytics]
+      summary: Get total for a specific event type
+      parameters:
+        - name: type
+          in: path
+          required: true
+          description: Event type (case-insensitive; normalized server-side)
+          schema:
+            $ref: "#/components/schemas/EventType"
+      responses:
+        "200":
+          description: Total for the requested type
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalyticsTypeResponse"
+              examples:
+                sample:
+                  value:
+                    type: "view"
+                    count: 42
+
+  /health:
+    get:
+      tags: [Health]
+      summary: Health probe
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+              examples:
+                ok:
+                  value: { status: "ok" }
+
+components:
+  schemas:
+    EventType:
+      type: string
+      description: Normalized (trim + lowercase) event type
+      example: view
+
+    PublishEventRequest:
+      type: object
+      required: [type]
+      properties:
+        type:
+          $ref: "#/components/schemas/EventType"
+        userId:
+          type: string
+          description: Optional user identifier; empty means system event
+          example: user-123
+        payload:
+          type: object
+          additionalProperties: true
+          description: Arbitrary JSON payload (optional)
+          example:
+            page: "/"
+            button: "buy"
+
+    PublishEventResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: accepted
+
+    AnalyticsTotalsResponse:
+      type: object
+      additionalProperties:
+        type: integer
+        format: int64
+      description: Map of event_type -> count (snapshot)
+
+    AnalyticsTypeResponse:
+      type: object
+      properties:
+        type:
+          $ref: "#/components/schemas/EventType"
+        count:
+          type: integer
+          format: int64
+      required: [type, count]
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ok
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
